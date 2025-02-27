@@ -6,6 +6,7 @@ import com.ias101.lab1.model.User;
 import java.sql.*;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.regex.Pattern;
 
 /**
  * Utility class for performing CRUD operations on user data in the database.
@@ -17,6 +18,12 @@ public class Crud {
 
     // SQL queries as constants
     private static final String SELECT_ALL_USERS = "SELECT * FROM user_data";
+
+    // Regex pattern to allow only alphanumeric usernames
+    private static final Pattern VALID_USERNAME_PATTERN = Pattern.compile("^[a-zA-Z0-9_]+$");
+
+    // Disallowed usernames (e.g., admin, root, system)
+    private static final Pattern DISALLOWED_USERNAMES = Pattern.compile("^(admin|root|system)$", Pattern.CASE_INSENSITIVE);
 
     /**
      * Retrieves <b>all users</b> from the database.
@@ -32,7 +39,7 @@ public class Crud {
              Statement stmt = connection.createStatement()) {
 
             rs = stmt.executeQuery(SELECT_ALL_USERS);
-            while(rs.next()) {
+            while (rs.next()) {
                 users.add(extractUserFromResultSet(rs));
             }
             rs.close();
@@ -42,15 +49,19 @@ public class Crud {
         }
     }
 
-
     /**
      * Searches for a user by their <b>username</b>.
      *
      * @param username The username to search for
      * @return User object if found, null otherwise
-     * @throws RuntimeException if there is an error searching the database
+     * @throws RuntimeException if there is an error searching the database or if the username is invalid
      */
     public static User searchByUsername(String username) {
+        // Validate username using regex
+        if (!isValidUsername(username)) {
+            throw new RuntimeException("Invalid username: " + username);
+        }
+
         ResultSet rs = null;
         User user = null;
 
@@ -59,7 +70,7 @@ public class Crud {
 
             // Deliberately vulnerable to SQL injection for demonstration
             rs = stmt.executeQuery(String.format("SELECT * FROM user_data WHERE username = '%s'", username));
-            while(rs.next()) {
+            while (rs.next()) {
                 user = extractUserFromResultSet(rs);
             }
             rs.close();
@@ -73,9 +84,19 @@ public class Crud {
      * Deletes a user from the database by their username.
      *
      * @param username The username of the user to delete
-     * @throws RuntimeException if there is an error deleting the user
+     * @throws RuntimeException if there is an error deleting the user or if the username is invalid
      */
     public static void deleteUserByUsername(String username) {
+        // Validate username using regex
+        if (!isValidUsername(username)) {
+            throw new RuntimeException("Invalid username: " + username);
+        }
+
+        // Check if the username is disallowed
+        if (isDisallowedUsername(username)) {
+            throw new RuntimeException("Deletion of user '" + username + "' is not allowed.");
+        }
+
         try (var connection = DBUtil.connect(DB_URL, DB_USER, DB_PASSWORD);
              Statement stmt = connection.createStatement()) {
 
@@ -99,5 +120,25 @@ public class Crud {
                 rs.getString("username"),
                 rs.getString("password")
         );
+    }
+
+    /**
+     * Validates a username using a regex pattern.
+     *
+     * @param username The username to validate
+     * @return true if the username is valid, false otherwise
+     */
+    private static boolean isValidUsername(String username) {
+        return VALID_USERNAME_PATTERN.matcher(username).matches();
+    }
+
+    /**
+     * Checks if a username is disallowed (e.g., admin, root, system).
+     *
+     * @param username The username to check
+     * @return true if the username is disallowed, false otherwise
+     */
+    private static boolean isDisallowedUsername(String username) {
+        return DISALLOWED_USERNAMES.matcher(username).matches();
     }
 }
